@@ -210,11 +210,11 @@
                 });
         }
 
-        // 4. Nhóm các câu hỏi trùng "Mã bài" hoặc "Tên bài" lại làm 1 thẻ
+        // 4. Nhóm các câu hỏi trùng "Bài" lại làm 1 thẻ
         function groupQuestionsByTopic() {
             groupedTopics = {};
             allQuestions.forEach(q => {
-                const topicKey = q.MaBai || "CHUNG";
+                const topicKey = q.Bai || "CHUNG";
                 if (!groupedTopics[topicKey]) {
                     groupedTopics[topicKey] = {
                         name: q.TenBai || "Bài Tập Tổng Hợp",
@@ -243,7 +243,7 @@
                         <div class="p-6">
                             <div class="flex justify-between items-start mb-4">
                                 <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${color.light}">
-                                    Mã bài: ${key}
+                                    Bài ${key}
                                 </span>
                                 <span class="text-xs text-slate-400 font-medium flex items-center gap-1">
                                     <i class="fa-solid fa-list-check"></i> ${topic.questions.length} câu hỏi
@@ -273,7 +273,7 @@
             document.getElementById("main-dashboard").classList.add("hidden");
             document.getElementById("quiz-section").classList.remove("hidden");
             
-            document.getElementById("quiz-title").innerText = `Mã bài: ${topicId}`;
+            document.getElementById("quiz-title").innerText = `Bài ${topicId}`;
             document.getElementById("quiz-topic-name").innerText = groupedTopics[topicId].name;
 
             showQuestion();
@@ -301,16 +301,16 @@
             ansBox.innerHTML = "";
 
             const options = [
-                { key: "A", text: q.DapAnA },
-                { key: "B", text: q.DapAnB },
-                { key: "C", text: q.DapAnC },
-                { key: "D", text: q.DapAnD }
+                { key: "A", idx: 1, text: q.LuaChon1 },
+                { key: "B", idx: 2, text: q.LuaChon2 },
+                { key: "C", idx: 3, text: q.LuaChon3 },
+                { key: "D", idx: 4, text: q.LuaChon4 }
             ];
 
             options.forEach(opt => {
                 if (!opt.text) return; // Bỏ qua nếu cột đáp án trong Sheet bị bỏ trống
                 const btnHtml = `
-                    <button onclick="selectOption(this, '${opt.key}')" class="w-full text-left px-5 py-3.5 rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all font-medium flex items-center gap-3">
+                    <button onclick="selectOption(this, ${opt.idx})" class="w-full text-left px-5 py-3.5 rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all font-medium flex items-center gap-3">
                         <span class="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200 shrink-0 select-idx">${opt.key}</span>
                         <span class="text-sm md:text-base">${opt.text}</span>
                     </button>
@@ -353,8 +353,8 @@
         function nextQuestion() {
             const currentQ = currentTopicQuestions[currentQuestionIndex];
             
-            // Chuẩn hóa chữ hoa chữ thường để đối chiếu chính xác đáp án đúng
-            if (selectedAnswer.trim().toUpperCase() === String(currentQ.DapAnDung).trim().toUpperCase()) {
+            // So khớp đáp án đã chọn (số 1-4) với cột DapAnDung trong Sheet (cũng là số 1-4)
+            if (Number(selectedAnswer) === Number(currentQ.DapAnDung)) {
                 score++;
             }
 
