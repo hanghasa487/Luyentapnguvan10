@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ôn Tập Ngữ Văn 10</title>
+    <!-- Nhúng Tailwind CSS để giao diện hiển thị dạng thẻ màu sắc, hiện đại -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 min-h-screen font-sans">
+
+    <!-- THANH TIÊU ĐỀ (HEADER) -->
+    <header class="bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold tracking-wide flex items-center gap-2">
+                <i class="fa-solid fa-book-open-reader"></i> Hệ Thống Ôn Tập Ngữ Văn 10
+            </h1>
+            <span class="bg-white/20 text-xs px-3 py-1.5 rounded-full backdrop-blur-sm" id="user-display">
+                Sẵn sàng làm bài
+            </span>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        <!-- BƯỚC ĐĂNG NHẬP THÔNG TIN HỌC SINH -->
+        <div id="auth-section" class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8 border border-slate-100 transition-all">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-3">
+                    <i class="fa-solid fa-user-graduate"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800">Thông Tin Học Sinh</h2>
+                <p class="text-slate-500 text-sm mt-1">Vui lòng nhập thông tin để hệ thống ghi nhận điểm số vào Sheet</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1">Họ và Tên</label>
+                    <input type="text" id="student-name" placeholder="Ví dụ: Nguyễn Văn A" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1">Lớp</label>
+                    <input type="text" id="student-class" placeholder="Ví dụ: 10A1" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+                <button onclick="startApp()" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold py-3 rounded-xl shadow-lg shadow-indigo-100 hover:opacity-95 transition-all mt-2">
+                    Vào Phòng Thi <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- GIAO DIỆN CHÍNH: DANH SÁCH THẺ BÀI TẬP (MÀU SẮC) -->
+        <div id="main-dashboard" class="hidden space-y-6">
+            <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between">
+                <div class="text-indigo-800 text-sm">
+                    <i class="fa-solid fa-circle-info mr-1"></i> Chọn một chủ đề dưới đây để bắt đầu làm bài trắc nghiệm.
+                </div>
+                <button onclick="logout()" class="text-xs text-red-600 hover:underline font-medium">Thoát tài khoản</button>
+            </div>
+
+            <!-- Nơi các thẻ bài tập tự động sinh ra -->
+            <div id="topics-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Loading state ban đầu -->
+                <div class="col-span-full text-center py-12 text-slate-400">
+                    <i class="fa-solid fa-spinner animate-spin text-3xl mb-2 text-indigo-500"></i>
+                    <p>Đang tải danh sách câu hỏi từ Google Sheet của cậu...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- GIAO DIỆN LÀM BÀI TRẮC NGHIỆM -->
+        <div id="quiz-section" class="hidden max-w-3xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+            <!-- Progress bar -->
+            <div class="w-full bg-slate-100 h-1.5">
+                <div id="quiz-progress" class="bg-indigo-600 h-1.5 w-0 transition-all duration-300"></div>
+            </div>
+            
+            <div class="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                    <span id="quiz-title" class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">Bài tập</span>
+                    <h3 id="quiz-topic-name" class="text-lg font-bold text-slate-800 mt-1">Đang tải...</h3>
+                </div>
+                <span id="quiz-counter" class="text-sm font-semibold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">0/0</span>
+            </div>
+
+            <div class="p-8">
+                <!-- Nội dung câu hỏi -->
+                <div id="question-box" class="mb-6">
+                    <p id="question-text" class="text-slate-800 font-medium text-lg leading-relaxed"></p>
+                </div>
+
+                <!-- Danh sách đáp án -->
+                <div id="answers-box" class="space-y-3">
+                    <!-- Sinh tự động bằng JS -->
+                </div>
+            </div>
+
+            <div class="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                <button id="btn-quit" onclick="backToDashboard()" class="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 transition-all">
+                    <i class="fa-solid fa-arrow-left-long mr-1"></i> Trở về danh sách
+                </button>
+                <button id="btn-next" onclick="nextQuestion()" disabled class="bg-indigo-600 text-white px-6 py-2 rounded-xl font-medium shadow-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-indigo-700 transition-all">
+                    Câu Tiếp Theo <i class="fa-solid fa-angle-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- GIAO DIỆN KẾT QUẢ -->
+        <div id="result-section" class="hidden max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-100">
+            <div id="result-icon" class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 animate-bounce">
+                <i class="fa-solid fa-square-check"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-1">Hoàn Thành Bài Tập!</h2>
+            <p id="result-topic" class="text-indigo-600 font-medium text-sm mb-6"></p>
+            
+            <div class="bg-slate-50 rounded-xl p-4 mb-6 grid grid-cols-2 gap-4 border border-slate-100">
+                <div>
+                    <span class="text-xs text-slate-400 block uppercase font-bold">Số câu đúng</span>
+                    <span id="result-score" class="text-2xl font-black text-slate-800">0/0</span>
+                </div>
+                <div>
+                    <span class="text-xs text-slate-400 block uppercase font-bold">Điểm số</span>
+                    <span id="result-percentage" class="text-2xl font-black text-emerald-600">0%</span>
+                </div>
+            </div>
+
+            <p id="sheet-status" class="text-xs text-slate-400 mb-6 flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-cloud-arrow-up animate-pulse text-indigo-500"></i> Đang đồng bộ kết quả lên Google Sheet...
+            </p>
+
+            <button onclick="backToDashboard()" class="w-full bg-slate-800 text-white font-semibold py-3 rounded-xl shadow-lg hover:bg-slate-900 transition-all">
+                Làm bài tập khác
+            </button>
+        </div>
+    </main>
+
+    <!-- ĐOẠN LOGIC XỬ LÝ (BỘ NÃO TRÊN TRANG WEB TĨNH) -->
+    <script>
+        // CHÈN LINK GOOGLE APPS SCRIPT CỦA CẬU VÀO ĐÂY
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3_T4ydFoCBjm6y92GGEzxLrpez9XwxMLH07VERcd-rfNjkqfeNdNb3kDDaJryPRI7Pw/exec";
+
+        let studentInfo = { name: "", class: "" };
+        let allQuestions = [];
+        let groupedTopics = {};
+        
+        let currentTopicId = "";
+        let currentTopicQuestions = [];
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let selectedAnswer = null;
+
+        // Bảng màu sắc rực rỡ để tô ngẫu nhiên cho các thẻ bài tập
+        const cardColors = [
+            { bg: "from-pink-500 to-rose-500", shadow: "shadow-rose-100", light: "bg-rose-50 text-rose-700" },
+            { bg: "from-amber-500 to-orange-500", shadow: "shadow-orange-100", light: "bg-orange-50 text-orange-700" },
+            { bg: "from-emerald-500 to-teal-500", shadow: "shadow-teal-100", light: "bg-teal-50 text-teal-700" },
+            { bg: "from-cyan-500 to-blue-500", shadow: "shadow-blue-100", light: "bg-blue-50 text-blue-700" },
+            { bg: "from-violet-500 to-purple-500", shadow: "shadow-purple-100", light: "bg-purple-50 text-purple-700" }
+        ];
+
+        // 1. Kiểm tra xem học sinh đã đăng nhập trước đó chưa
+        window.onload = function() {
+            const savedName = localStorage.getItem("std_name");
+            const savedClass = localStorage.getItem("std_class");
+            if (savedName && savedClass) {
+                document.getElementById("student-name").value = savedName;
+                document.getElementById("student-class").value = savedClass;
+                startApp();
+            }
+        };
+
+        // 2. Chuyển từ màn hình đăng nhập sang Dashboard chủ đề
+        function startApp() {
+            const name = document.getElementById("student-name").value.trim();
+            const cls = document.getElementById("student-class").value.trim();
+
+            if (!name || !cls) {
+                alert("Cậu điền đầy đủ Họ tên và Lớp để hệ thống lưu điểm nhé!");
+                return;
+            }
+
+            studentInfo.name = name;
+            studentInfo.class = cls;
+            
+            // Lưu trạng thái đăng nhập vào trình duyệt học sinh
+            localStorage.setItem("std_name", name);
+            localStorage.setItem("std_class", cls);
+
+            document.getElementById("user-display").innerHTML = `<i class="fa-solid fa-user"></i> ${name} - Lớp ${cls}`;
+            document.getElementById("auth-section").classList.add("hidden");
+            document.getElementById("main-dashboard").classList.remove("hidden");
+
+            fetchQuestions();
+        }
+
+        // 3. Gọi API lấy dữ liệu câu hỏi từ Google Sheet qua Apps Script
+        function fetchQuestions() {
+            fetch(SCRIPT_URL)
+                .then(res => res.json())
+                .then(data => {
+                    allQuestions = data;
+                    groupQuestionsByTopic();
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById("topics-grid").innerHTML = `
+                        <div class="col-span-full text-center py-8 text-red-500 font-medium">
+                            <i class="fa-solid fa-triangle-exclamation text-2xl mb-2"></i>
+                            <p>Không kết nối được dữ liệu. Cậu hãy kiểm tra xem phân quyền "Anyone" ở bước Deploy Apps Script đã chuẩn chưa nhé!</p>
+                        </div>`;
+                });
+        }
+
+        // 4. Nhóm các câu hỏi trùng "Mã bài" hoặc "Tên bài" lại làm 1 thẻ
+        function groupQuestionsByTopic() {
+            groupedTopics = {};
+            allQuestions.forEach(q => {
+                const topicKey = q.MaBai || "CHUNG";
+                if (!groupedTopics[topicKey]) {
+                    groupedTopics[topicKey] = {
+                        name: q.TenBai || "Bài Tập Tổng Hợp",
+                        questions: []
+                    };
+                }
+                groupedTopics[topicKey].questions.push(q);
+            });
+
+            renderTopicCards();
+        }
+
+        // 5. Vẽ giao diện các Thẻ Bài Tập dạng Card màu sắc sinh động
+        function renderTopicCards() {
+            const grid = document.getElementById("topics-grid");
+            grid.innerHTML = "";
+
+            let index = 0;
+            for (const key in groupedTopics) {
+                const topic = groupedTopics[key];
+                const color = cardColors[index % cardColors.length];
+                index++;
+
+                const cardHtml = `
+                    <div class="bg-white rounded-2xl shadow-md ${color.shadow} border border-slate-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+                        <div class="p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${color.light}">
+                                    Mã bài: ${key}
+                                </span>
+                                <span class="text-xs text-slate-400 font-medium flex items-center gap-1">
+                                    <i class="fa-solid fa-list-check"></i> ${topic.questions.length} câu hỏi
+                                </span>
+                            </div>
+                            <h4 class="text-lg font-bold text-slate-800 line-clamp-2 mb-2">${topic.name}</h4>
+                            <p class="text-slate-400 text-xs">Học sinh hoàn thành hệ thống tự động trả điểm về Excel.</p>
+                        </div>
+                        <div class="px-6 pb-6">
+                            <button onclick="startQuiz('${key}')" class="w-full bg-gradient-to-r ${color.bg} text-white font-semibold py-2.5 rounded-xl shadow-sm text-sm hover:opacity-90 transition-all flex items-center justify-center gap-2">
+                                Làm bài ngay <i class="fa-solid fa-play text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                grid.insertAdjacentHTML("beforeend", cardHtml);
+            }
+        }
+
+        // 6. Bắt đầu làm bài trắc nghiệm của thẻ được chọn
+        function startQuiz(topicId) {
+            currentTopicId = topicId;
+            currentTopicQuestions = groupedTopics[topicId].questions;
+            currentQuestionIndex = 0;
+            score = 0;
+
+            document.getElementById("main-dashboard").classList.add("hidden");
+            document.getElementById("quiz-section").classList.remove("hidden");
+            
+            document.getElementById("quiz-title").innerText = `Mã bài: ${topicId}`;
+            document.getElementById("quiz-topic-name").innerText = groupedTopics[topicId].name;
+
+            showQuestion();
+        }
+
+        // 7. Hiển thị câu hỏi hiện tại lên giao diện
+        function showQuestion() {
+            selectedAnswer = null;
+            document.getElementById("btn-next").disabled = true;
+            
+            const total = currentTopicQuestions.length;
+            const currentIdx = currentQuestionIndex;
+            const q = currentTopicQuestions[currentIdx];
+
+            // Cập nhật số câu đếm (Ví dụ: 1/10) và thanh tiến độ (progress bar)
+            document.getElementById("quiz-counter").innerText = `${currentIdx + 1}/${total}`;
+            const progressPercent = ((currentIdx + 1) / total) * 100;
+            document.getElementById("quiz-progress").style.width = `${progressPercent}%`;
+
+            // Điền văn bản câu hỏi
+            document.getElementById("question-text").innerText = `Câu ${currentIdx + 1}: ${q.CauHoi}`;
+
+            // Tạo danh sách các phương án trả lời A, B, C, D
+            const ansBox = document.getElementById("answers-box");
+            ansBox.innerHTML = "";
+
+            const options = [
+                { key: "A", text: q.DapAnA },
+                { key: "B", text: q.DapAnB },
+                { key: "C", text: q.DapAnC },
+                { key: "D", text: q.DapAnD }
+            ];
+
+            options.forEach(opt => {
+                if (!opt.text) return; // Bỏ qua nếu cột đáp án trong Sheet bị bỏ trống
+                const btnHtml = `
+                    <button onclick="selectOption(this, '${opt.key}')" class="w-full text-left px-5 py-3.5 rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all font-medium flex items-center gap-3">
+                        <span class="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200 shrink-0 select-idx">${opt.key}</span>
+                        <span class="text-sm md:text-base">${opt.text}</span>
+                    </button>
+                `;
+                ansBox.insertAdjacentHTML("beforeend", btnHtml);
+            });
+
+            // Nếu là câu cuối cùng thì đổi chữ nút Tiếp theo sang Hoàn thành
+            if (currentQuestionIndex === total - 1) {
+                document.getElementById("btn-next").innerHTML = `Nộp Bài & Xem Điểm <i class="fa-solid fa-check-double ml-1"></i>`;
+            } else {
+                document.getElementById("btn-next").innerHTML = `Câu Tiếp Theo <i class="fa-solid fa-angle-right ml-1"></i>`;
+            }
+        }
+
+        // 8. Đổi màu sắc thẻ khi học sinh click lựa chọn phương án
+        function selectOption(element, optionKey) {
+            selectedAnswer = optionKey;
+            
+            // Reset tất cả các nút đáp án khác về trạng thái bình thường
+            const allButtons = document.querySelectorAll("#answers-box button");
+            allButtons.forEach(btn => {
+                btn.classList.remove("border-indigo-600", "bg-indigo-50/50");
+                const idxSpan = btn.querySelector(".select-idx");
+                idxSpan.classList.remove("bg-indigo-600", "text-white", "border-indigo-600");
+                idxSpan.classList.add("bg-slate-100", "text-slate-500");
+            });
+
+            // Tô đậm thẻ được chọn
+            element.classList.add("border-indigo-600", "bg-indigo-50/50");
+            const activeIdx = element.querySelector(".select-idx");
+            activeIdx.classList.remove("bg-slate-100", "text-slate-500");
+            activeIdx.classList.add("bg-indigo-600", "text-white", "border-indigo-600");
+
+            // Kích hoạt nút bấm chuyển câu tiếp theo
+            document.getElementById("btn-next").disabled = false;
+        }
+
+        // 9. Xử lý logic khi bấm nút tiếp tục sang câu sau hoặc nộp bài
+        function nextQuestion() {
+            const currentQ = currentTopicQuestions[currentQuestionIndex];
+            
+            // Chuẩn hóa chữ hoa chữ thường để đối chiếu chính xác đáp án đúng
+            if (selectedAnswer.trim().toUpperCase() === String(currentQ.DapAnDung).trim().toUpperCase()) {
+                score++;
+            }
+
+            if (currentQuestionIndex < currentTopicQuestions.length - 1) {
+                currentQuestionIndex++;
+                showQuestion();
+            } else {
+                submitFinalResult();
+            }
+        }
+
+        // 10. Gửi kết quả chấm điểm tự động về Google Sheet thông qua POST Apps Script
+        function submitFinalResult() {
+            document.getElementById("quiz-section").classList.add("hidden");
+            document.getElementById("result-section").classList.remove("hidden");
+
+            const total = currentTopicQuestions.length;
+            const percentage = Math.round((score / total) * 100);
+
+            document.getElementById("result-topic").innerText = groupedTopics[currentTopicId].name;
+            document.getElementById("result-score").innerText = `${score}/${total}`;
+            document.getElementById("result-percentage").innerText = `${percentage}%`;
+
+            // Cấu hình dữ liệu JSON trùng khớp với d.hoTen, d.lop... ở hàm doPost trong Google Apps Script
+            const payload = {
+                hoTen: studentInfo.name,
+                lop: studentInfo.class,
+                bai: currentTopicId,
+                tenBai: groupedTopics[currentTopicId].name,
+                diem: score,
+                tongCau: total
+            };
+
+            document.getElementById("sheet-status").innerHTML = `<i class="fa-solid fa-spinner animate-spin text-indigo-500"></i> Đang đồng bộ kết quả lên Google Sheet...`;
+
+            fetch(SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors", // Thiết lập để tránh lỗi chặn CORS trên trình duyệt web tĩnh công cộng
+                cache: "no-cache",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(() => {
+                document.getElementById("sheet-status").innerHTML = `<span class="text-emerald-600 font-semibold"><i class="fa-solid fa-cloud-arrow-up"></i> Đồng bộ thành công! Giáo viên đã nhận được điểm số.</span>`;
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById("sheet-status").innerHTML = `<span class="text-amber-600"><i class="fa-solid fa-triangle-exclamation"></i> Có lỗi mạng nhẹ, kết quả đang được đẩy lại...</span>`;
+            });
+        }
+
+        // 11. Các hàm điều hướng phụ trợ
+        function backToDashboard() {
+            document.getElementById("quiz-section").classList.add("hidden");
+            document.getElementById("result-section").classList.add("hidden");
+            document.getElementById("main-dashboard").classList.remove("hidden");
+            fetchQuestions(); // Tải lại danh sách để cập nhật làm mới
+        }
+
+        function logout() {
+            localStorage.removeItem("std_name");
+            localStorage.removeItem("std_class");
+            document.getElementById("main-dashboard").classList.add("hidden");
+            document.getElementById("auth-section").classList.remove("hidden");
+        }
+    </script>
+</body>
+</html>
