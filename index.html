@@ -97,7 +97,12 @@
                     <span id="quiz-title" class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">Bài tập</span>
                     <h3 id="quiz-topic-name" class="text-lg font-bold text-slate-800 mt-1">Đang tải...</h3>
                 </div>
-                <span id="quiz-counter" class="text-sm font-semibold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">0/0</span>
+                <div class="flex items-center gap-2">
+                    <span id="quiz-timer" class="text-sm font-bold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock"></i> 00:00
+                    </span>
+                    <span id="quiz-counter" class="text-sm font-semibold text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">0/0</span>
+                </div>
             </div>
 
             <div class="p-8">
@@ -141,6 +146,8 @@
                 </div>
             </div>
 
+            <p id="result-essay-note" class="hidden text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4 font-medium"></p>
+
             <p id="sheet-status" class="text-xs text-slate-400 mb-6 flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-cloud-arrow-up animate-pulse text-indigo-500"></i> Đang đồng bộ kết quả lên Google Sheet...
             </p>
@@ -163,8 +170,26 @@
         let currentTopicId = "";
         let currentTopicQuestions = [];
         let currentQuestionIndex = 0;
-        let score = 0;
+        let score = 0;              // số câu trắc nghiệm trả lời đúng
+        let mcqTotal = 0;           // tổng số câu trắc nghiệm (không tính câu tự luận)
         let selectedAnswer = null;
+        let essayAnswers = [];      // lưu câu trả lời tự luận: [{cauHoi, traLoi}]
+
+        // --- Biến phục vụ giới hạn giờ làm bài + ghi log rời tab ---
+        let quizActive = false;     // true trong lúc học sinh đang làm bài (dùng để biết khi nào cần đếm rời tab)
+        let quizStartTime = null;   // mốc bắt đầu cả bài, dùng để ghi lại tổng thời gian làm bài thực tế
+        let timerInterval = null;
+        let remainingSeconds = 0;   // số giây còn lại của đồng hồ đếm ngược (chỉ tính cho câu trắc nghiệm)
+        let timerPaused = false;    // true khi đang ở câu tự luận -> tạm dừng đếm ngược
+        let tabSwitchCount = 0;     // số lần học sinh chuyển sang tab/ứng dụng khác khi đang làm bài
+
+        // Ghi nhận mỗi lần học sinh rời khỏi tab (chuyển ứng dụng, mở tab khác...) trong lúc đang làm bài
+        // Lưu ý: đây chỉ là chỉ số ước lượng để GV tham khảo, KHÔNG chặn được học sinh làm việc đó
+        document.addEventListener("visibilitychange", () => {
+            if (quizActive && document.hidden) {
+                tabSwitchCount++;
+            }
+        });
 
         // Bảng màu sắc rực rỡ để tô ngẫu nhiên cho các thẻ bài tập
         const cardColors = [
@@ -335,6 +360,9 @@
             currentTopicQuestions = tieuMuc ? topic.subGroups[tieuMuc] : topic.questions;
             currentQuestionIndex = 0;
             score = 0;
+            essayAnswers = [];
+            tabSwitchCount = 0;
+            mcqTotal = currentTopicQuestions.filter(q => String(q.LoaiCauHoi || "").trim() !== "TuLuan").length;
 
             document.getElementById("subtopic-section").classList.add("hidden");
             document.getElementById("main-dashboard").classList.add("hidden");
@@ -343,11 +371,80 @@
             document.getElementById("quiz-title").innerText = `Bài ${topicId}`;
             document.getElementById("quiz-topic-name").innerText = tieuMuc ? `${topic.name} · ${tieuMuc}` : `${topic.name} (Tổng hợp cả bài)`;
 
+            // Xác định thời gian làm bài: ưu tiên cột "ThoiGianPhut" nếu GV có điền trong Sheet,
+            // nếu không thì tự tính theo SỐ CÂU TRẮC NGHIỆM (1.5 phút/câu, tối thiểu 5 phút).
+            // Câu tự luận KHÔNG được cộng vào thời gian đếm ngược vì không giới hạn giờ.
+            let customMinutes = null;
+            for (const q of currentTopicQuestions) {
+                const v = Number(q.ThoiGianPhut);
+                if (v && v > 0) { customMinutes = v; break; }
+            }
+            const minutes = customMinutes || Math.max(5, Math.round(mcqTotal * 1.5));
+
+            quizActive = true;
+            quizStartTime = Date.now(); // mốc để tính tổng thời gian làm bài thực tế (ghi vào Sheet)
+            startTimer(minutes);
             showQuestion();
+        }
+
+        // Khởi động đồng hồ đếm ngược (chỉ chạy khi đang ở câu trắc nghiệm); hết giờ thì tự động nộp bài
+        function startTimer(minutes) {
+            remainingSeconds = minutes * 60;
+            timerPaused = false;
+            updateTimerDisplay(remainingSeconds, false);
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (timerPaused) return; // đang ở câu tự luận -> không trừ giờ
+                remainingSeconds--;
+                if (remainingSeconds <= 0) {
+                    clearInterval(timerInterval);
+                    updateTimerDisplay(0, false);
+                    alert("Đã hết giờ làm phần trắc nghiệm! Hệ thống tự động nộp bài với các câu đã trả lời.");
+                    submitFinalResult();
+                } else {
+                    updateTimerDisplay(remainingSeconds, false);
+                }
+            }, 1000);
+        }
+
+        // Tạm dừng đồng hồ khi học sinh đang làm câu tự luận (không tính giờ)
+        function pauseTimer() {
+            timerPaused = true;
+            updateTimerDisplay(remainingSeconds, true);
+        }
+
+        // Chạy lại đồng hồ khi học sinh quay về câu trắc nghiệm
+        function resumeTimer() {
+            timerPaused = false;
+            updateTimerDisplay(remainingSeconds, false);
+        }
+
+        function stopTimer() {
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        }
+
+        function updateTimerDisplay(seconds, paused) {
+            const el = document.getElementById("quiz-timer");
+            if (!el) return;
+            if (paused) {
+                el.innerHTML = `<i class="fa-solid fa-pause"></i> Tự luận: không tính giờ`;
+                el.classList.remove("text-red-600", "bg-red-50");
+                el.classList.add("text-amber-600", "bg-amber-50");
+                return;
+            }
+            const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+            const s = (seconds % 60).toString().padStart(2, "0");
+            el.innerHTML = `<i class="fa-solid fa-clock"></i> ${m}:${s}`;
+            el.classList.remove("text-amber-600", "bg-amber-50");
+            el.classList.toggle("text-red-600", seconds <= 60);
+            el.classList.toggle("bg-red-50", seconds <= 60);
+            el.classList.toggle("text-slate-500", seconds > 60);
         }
 
         // Quay lại màn hình chọn phần nhỏ (từ quiz hoặc từ màn hình kết quả)
         function backToSubtopic() {
+            stopTimer();
+            quizActive = false;
             document.getElementById("quiz-section").classList.add("hidden");
             document.getElementById("result-section").classList.add("hidden");
             openBaiMenu(currentTopicId);
@@ -361,6 +458,7 @@
             const total = currentTopicQuestions.length;
             const currentIdx = currentQuestionIndex;
             const q = currentTopicQuestions[currentIdx];
+            const isEssay = String(q.LoaiCauHoi || "").trim() === "TuLuan";
 
             // Cập nhật số câu đếm (Ví dụ: 1/10) và thanh tiến độ (progress bar)
             document.getElementById("quiz-counter").innerText = `${currentIdx + 1}/${total}`;
@@ -370,27 +468,45 @@
             // Điền văn bản câu hỏi
             document.getElementById("question-text").innerText = `Câu ${currentIdx + 1}: ${q.CauHoi}`;
 
-            // Tạo danh sách các phương án trả lời A, B, C, D
             const ansBox = document.getElementById("answers-box");
             ansBox.innerHTML = "";
 
-            const options = [
-                { key: "A", idx: 1, text: q.LuaChon1 },
-                { key: "B", idx: 2, text: q.LuaChon2 },
-                { key: "C", idx: 3, text: q.LuaChon3 },
-                { key: "D", idx: 4, text: q.LuaChon4 }
-            ];
+            if (isEssay) {
+                pauseTimer(); // câu tự luận không tính giờ
 
-            options.forEach(opt => {
-                if (!opt.text) return; // Bỏ qua nếu cột đáp án trong Sheet bị bỏ trống
-                const btnHtml = `
-                    <button onclick="selectOption(this, ${opt.idx})" class="w-full text-left px-5 py-3.5 rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all font-medium flex items-center gap-3">
-                        <span class="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200 shrink-0 select-idx">${opt.key}</span>
-                        <span class="text-sm md:text-base">${opt.text}</span>
-                    </button>
+                // CÂU TỰ LUẬN: hiện ô nhập văn bản, không chấm tự động
+                ansBox.innerHTML = `
+                    <div class="mb-3 text-xs font-semibold text-amber-600 bg-amber-50 inline-block px-2.5 py-1 rounded-full">
+                        <i class="fa-solid fa-pen-nib mr-1"></i> Câu tự luận — Giáo viên sẽ chấm điểm riêng
+                    </div>
+                    <textarea id="essay-input" rows="6" placeholder="Nhập câu trả lời của em..." class="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm md:text-base"></textarea>
                 `;
-                ansBox.insertAdjacentHTML("beforeend", btnHtml);
-            });
+                const ta = document.getElementById("essay-input");
+                ta.oninput = () => {
+                    document.getElementById("btn-next").disabled = ta.value.trim().length === 0;
+                };
+            } else {
+                resumeTimer(); // quay lại câu trắc nghiệm -> tính giờ tiếp
+
+                // CÂU TRẮC NGHIỆM: hiện 4 đáp án như cũ
+                const options = [
+                    { key: "A", idx: 1, text: q.LuaChon1 },
+                    { key: "B", idx: 2, text: q.LuaChon2 },
+                    { key: "C", idx: 3, text: q.LuaChon3 },
+                    { key: "D", idx: 4, text: q.LuaChon4 }
+                ];
+
+                options.forEach(opt => {
+                    if (!opt.text) return; // Bỏ qua nếu cột đáp án trong Sheet bị bỏ trống
+                    const btnHtml = `
+                        <button onclick="selectOption(this, ${opt.idx})" class="w-full text-left px-5 py-3.5 rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all font-medium flex items-center gap-3">
+                            <span class="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200 shrink-0 select-idx">${opt.key}</span>
+                            <span class="text-sm md:text-base">${opt.text}</span>
+                        </button>
+                    `;
+                    ansBox.insertAdjacentHTML("beforeend", btnHtml);
+                });
+            }
 
             // Nếu là câu cuối cùng thì đổi chữ nút Tiếp theo sang Hoàn thành
             if (currentQuestionIndex === total - 1) {
@@ -426,10 +542,17 @@
         // 9. Xử lý logic khi bấm nút tiếp tục sang câu sau hoặc nộp bài
         function nextQuestion() {
             const currentQ = currentTopicQuestions[currentQuestionIndex];
-            
-            // So khớp đáp án đã chọn (số 1-4) với cột DapAnDung trong Sheet (cũng là số 1-4)
-            if (Number(selectedAnswer) === Number(currentQ.DapAnDung)) {
-                score++;
+            const isEssay = String(currentQ.LoaiCauHoi || "").trim() === "TuLuan";
+
+            if (isEssay) {
+                // Lưu lại câu trả lời tự luận để gửi cho GV chấm tay, không tự động chấm điểm
+                const ta = document.getElementById("essay-input");
+                essayAnswers.push({ cauHoi: currentQ.CauHoi, traLoi: ta ? ta.value.trim() : "" });
+            } else {
+                // So khớp đáp án đã chọn (số 1-4) với cột DapAnDung trong Sheet (cũng là số 1-4)
+                if (Number(selectedAnswer) === Number(currentQ.DapAnDung)) {
+                    score++;
+                }
             }
 
             if (currentQuestionIndex < currentTopicQuestions.length - 1) {
@@ -442,24 +565,43 @@
 
         // 10. Gửi kết quả chấm điểm tự động về Google Sheet thông qua POST Apps Script
         function submitFinalResult() {
+            stopTimer();
+            quizActive = false;
+
             document.getElementById("quiz-section").classList.add("hidden");
             document.getElementById("result-section").classList.remove("hidden");
 
-            const total = currentTopicQuestions.length;
-            const percentage = Math.round((score / total) * 100);
+            const percentage = mcqTotal > 0 ? Math.round((score / mcqTotal) * 100) : 0;
+            const elapsedMinutes = quizStartTime ? Math.max(1, Math.round((Date.now() - quizStartTime) / 60000)) : 0;
 
             document.getElementById("result-topic").innerText = groupedTopics[currentTopicId].name;
-            document.getElementById("result-score").innerText = `${score}/${total}`;
-            document.getElementById("result-percentage").innerText = `${percentage}%`;
+            document.getElementById("result-score").innerText = mcqTotal > 0 ? `${score}/${mcqTotal}` : "—";
+            document.getElementById("result-percentage").innerText = mcqTotal > 0 ? `${percentage}%` : "—";
 
-            // Cấu hình dữ liệu JSON trùng khớp với d.hoTen, d.lop... ở hàm doPost trong Google Apps Script
+            const essayNote = document.getElementById("result-essay-note");
+            if (essayAnswers.length > 0) {
+                essayNote.classList.remove("hidden");
+                essayNote.innerText = `+ ${essayAnswers.length} câu tự luận đã nộp — chờ giáo viên chấm điểm riêng`;
+            } else {
+                essayNote.classList.add("hidden");
+            }
+
+            // Gộp toàn bộ câu trả lời tự luận thành 1 đoạn văn bản dễ đọc để GV chấm trực tiếp trong Sheet
+            const essayText = essayAnswers
+                .map((e, i) => `Câu ${i + 1}: ${e.cauHoi}\nTrả lời: ${e.traLoi}`)
+                .join("\n\n---\n\n");
+
+            // Cấu hình dữ liệu JSON trùng khớp với hàm doPost trong Google Apps Script
             const payload = {
                 hoTen: studentInfo.name,
                 lop: studentInfo.class,
                 bai: currentTopicId,
                 tenBai: groupedTopics[currentTopicId].name,
                 diem: score,
-                tongCau: total
+                tongCau: mcqTotal,
+                soLanRoiTab: tabSwitchCount,
+                thoiGianLamPhut: elapsedMinutes,
+                baiLamTuLuan: essayText
             };
 
             document.getElementById("sheet-status").innerHTML = `<i class="fa-solid fa-spinner animate-spin text-indigo-500"></i> Đang đồng bộ kết quả lên Google Sheet...`;
@@ -482,6 +624,8 @@
 
         // 11. Các hàm điều hướng phụ trợ
         function backToDashboard() {
+            stopTimer();
+            quizActive = false;
             document.getElementById("quiz-section").classList.add("hidden");
             document.getElementById("result-section").classList.add("hidden");
             document.getElementById("subtopic-section").classList.add("hidden");
